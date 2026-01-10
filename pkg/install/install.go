@@ -101,9 +101,12 @@ func runInstall(opts *Options) error {
 
 	// Detect interpreter.
 	fmt.Println("Detecting interpreter...")
-	interpPath, err := interpreter.Detect(opts.Path, scriptContent, opts.Interpreter)
+	interpPath, warning, err := interpreter.Detect(opts.Path, scriptContent, opts.Interpreter)
 	if err != nil {
 		return err
+	}
+	if warning != "" {
+		fmt.Println(warning)
 	}
 	fmt.Printf("Using interpreter: %s\n", interpPath)
 
