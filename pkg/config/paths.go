@@ -25,11 +25,11 @@ func GetDefaultScriptDir() (string, error) {
 }
 
 // GetDefaultRegistryPath returns the default path for the registry file.
-func GetDefaultRegistryPath() string {
+func GetDefaultRegistryPath() (string, error) {
 	// Registry is always in ~/.config/scriptman/registry.json
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".", ".scriptman", "registry.json")
+		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
-	return filepath.Join(home, ".config", "scriptman", "registry.json")
+	return filepath.Join(home, ".config", "scriptman", "registry.json"), nil
 }

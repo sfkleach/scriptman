@@ -78,7 +78,10 @@ func runInstall(opts *Options) error {
 	}
 
 	// Load registry.
-	registryPath := config.GetDefaultRegistryPath()
+	registryPath, err := config.GetDefaultRegistryPath()
+	if err != nil {
+		return fmt.Errorf("failed to get registry path: %w", err)
+	}
 	reg, err := registry.Load(registryPath)
 	if err != nil {
 		return fmt.Errorf("failed to load registry: %w", err)

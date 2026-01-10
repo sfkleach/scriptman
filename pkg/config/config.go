@@ -15,7 +15,10 @@ type Config struct {
 
 // Load reads the configuration from disk. Returns default config if file doesn't exist.
 func Load() (*Config, error) {
-	configPath := GetConfigPath()
+	configPath, err := GetConfigPath()
+	if err != nil {
+		return nil, err
+	}
 
 	data, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
@@ -52,7 +55,10 @@ func Load() (*Config, error) {
 
 // Save writes the configuration to disk.
 func (c *Config) Save() error {
-	configPath := GetConfigPath()
+	configPath, err := GetConfigPath()
+	if err != nil {
+		return err
+	}
 
 	// Ensure parent directory exists.
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
@@ -89,12 +95,12 @@ func GetDefaultConfig() (*Config, error) {
 }
 
 // GetConfigPath returns the path to the configuration file.
-func GetConfigPath() string {
+func GetConfigPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".", ".scriptman", "config.json")
+		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
-	return filepath.Join(home, ".config", "scriptman", "config.json")
+	return filepath.Join(home, ".config", "scriptman", "config.json"), nil
 }
 
 // getDefaultBinDir returns the default directory for wrappers.
