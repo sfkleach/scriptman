@@ -21,7 +21,6 @@ type Options struct {
 	Interpreter string
 	Name        string
 	Into        string
-	Method      wrapper.Method
 }
 
 // NewInstallCommand creates the install command.
@@ -37,7 +36,7 @@ Examples:
   scriptman install owner/repo scripts/myscript.py
   scriptman install owner/repo scripts/tool.rb --name mytool
   scriptman install owner/repo scripts/app.py --interpreter python3.11
-  scriptman install owner/repo scripts/util.sh --into ~/bin --method compiled`,
+  scriptman install owner/repo scripts/util.sh --into ~/bin`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Repo = args[0]
@@ -49,30 +48,8 @@ Examples:
 	cmd.Flags().StringVar(&opts.Interpreter, "interpreter", "", "Explicit interpreter command")
 	cmd.Flags().StringVar(&opts.Name, "name", "", "Name for the wrapper (defaults to script filename without extension)")
 	cmd.Flags().StringVar(&opts.Into, "into", "", "Target directory for wrapper (defaults to ~/.local/bin)")
-	cmd.Flags().Var((*methodValue)(&opts.Method), "method", "Wrapper method: auto, compiled, or shell (default: auto)")
 
 	return cmd
-}
-
-// methodValue is a custom flag type for wrapper.Method.
-type methodValue wrapper.Method
-
-func (m *methodValue) String() string {
-	return string(*m)
-}
-
-func (m *methodValue) Set(value string) error {
-	switch value {
-	case "auto", "compiled", "shell":
-		*m = methodValue(value)
-		return nil
-	default:
-		return fmt.Errorf("invalid method: %s (must be auto, compiled, or shell)", value)
-	}
-}
-
-func (m *methodValue) Type() string {
-	return "method"
 }
 
 // runInstall executes the install command.
@@ -93,7 +70,11 @@ func runInstall(opts *Options) error {
 	// Determine target directory.
 	binDir := opts.Into
 	if binDir == "" {
-		binDir = config.GetDefaultBinDir()
+		var err error
+		binDir, err = config.GetDefaultBinDir()
+		if err != nil {
+			return fmt.Errorf("failed to get default bin directory: %w", err)
+		}
 	}
 
 	// Load registry.
@@ -124,7 +105,10 @@ func runInstall(opts *Options) error {
 	fmt.Printf("Using interpreter: %s\n", interpPath)
 
 	// Determine script storage location.
-	scriptDir := config.GetDefaultScriptDir()
+	scriptDir, err := config.GetDefaultScriptDir()
+	if err != nil {
+		return fmt.Errorf("failed to get default script directory: %w", err)
+	}
 	localScriptPath := filepath.Join(scriptDir, filepath.Base(opts.Path))
 
 	// Save script.
@@ -133,25 +117,21 @@ func runInstall(opts *Options) error {
 		return fmt.Errorf("failed to save script: %w", err)
 	}
 
-	// Select wrapper method.
-	method := wrapper.SelectMethod(opts.Method)
-	fmt.Printf("Creating %s wrapper...\n", method)
-
 	// Create wrapper.
+	fmt.Println("Creating shell script wrapper...")
 	wrapperPath := filepath.Join(binDir, name)
-	if err := wrapper.CreateWrapper(method, name, interpPath, localScriptPath, wrapperPath); err != nil {
+	if err := wrapper.CreateWrapper(interpPath, localScriptPath, wrapperPath); err != nil {
 		return fmt.Errorf("failed to create wrapper: %w", err)
 	}
 
 	// Add to registry.
 	reg.Add(name, &registry.Script{
-		Repo:          opts.Repo,
-		SourcePath:    opts.Path,
-		LocalScript:   localScriptPath,
-		Interpreter:   interpPath,
-		WrapperPath:   wrapperPath,
-		WrapperMethod: string(method),
-		InstalledAt:   time.Now(),
+		Repo:        opts.Repo,
+		SourcePath:  opts.Path,
+		LocalScript: localScriptPath,
+		Interpreter: interpPath,
+		WrapperPath: wrapperPath,
+		InstalledAt: time.Now(),
 	})
 
 	// Save registry.
@@ -162,7 +142,6 @@ func runInstall(opts *Options) error {
 	fmt.Printf("\n✓ Installed '%s' successfully\n", name)
 	fmt.Printf("  Wrapper: %s\n", wrapperPath)
 	fmt.Printf("  Script:  %s\n", localScriptPath)
-	fmt.Printf("  Method:  %s\n", method)
 
 	return nil
 }

@@ -19,14 +19,13 @@ type Registry struct {
 
 // Script represents an installed script entry in the registry.
 type Script struct {
-	Repo          string    `json:"repo"`
-	SourcePath    string    `json:"source_path"`
-	LocalScript   string    `json:"local_script"`
-	Interpreter   string    `json:"interpreter"`
-	WrapperPath   string    `json:"wrapper_path"`
-	WrapperMethod string    `json:"wrapper_method"` // "compiled" or "shell"
-	InstalledAt   time.Time `json:"installed_at"`
-	Version       string    `json:"version,omitempty"`
+	Repo        string    `json:"repo"`
+	SourcePath  string    `json:"source_path"`
+	LocalScript string    `json:"local_script"`
+	Interpreter string    `json:"interpreter"`
+	WrapperPath string    `json:"wrapper_path"`
+	InstalledAt time.Time `json:"installed_at"`
+	Version     string    `json:"version,omitempty"`
 }
 
 // Load reads the registry from disk. Returns an empty registry if file doesn't exist.

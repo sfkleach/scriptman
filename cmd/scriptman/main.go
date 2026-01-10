@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"syscall"
 
 	"github.com/sfkleach/scriptman/pkg/install"
 	"github.com/sfkleach/scriptman/pkg/version"
@@ -42,49 +40,10 @@ func init() {
 }
 
 func main() {
-	// Check if we're being invoked as a wrapped script (runner mode).
-	basename := filepath.Base(os.Args[0])
-	if basename != "scriptman" {
-		runScript(basename)
-		return
-	}
-
-	// Management mode.
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-}
-
-// runScript handles runner mode when invoked via a hardlink.
-func runScript(name string) {
-	// Find our own location.
-	self, err := os.Executable()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "scriptman: cannot determine executable path: %v\n", err)
-		os.Exit(1)
-	}
-	dir := filepath.Dir(self)
-
-	// Look for companion shell script.
-	shScript := filepath.Join(dir, name+".sh")
-	if _, err := os.Stat(shScript); err == nil {
-		// Execute the shell script using syscall.Exec.
-		// This replaces the current process with sh executing the script.
-		args := append([]string{"sh", shScript}, os.Args[1:]...)
-		env := os.Environ()
-		if err := syscall.Exec("/bin/sh", args, env); err != nil {
-			fmt.Fprintf(os.Stderr, "scriptman: failed to exec shell script: %v\n", err)
-			os.Exit(1)
-		}
-		// Never reached if exec succeeds.
-		return
-	}
-
-	// No script found.
-	fmt.Fprintf(os.Stderr, "scriptman: no dispatch found for '%s'\n", name)
-	fmt.Fprintf(os.Stderr, "scriptman: looked for %s\n", shScript)
-	os.Exit(1)
 }
 
 // newInfoCommand creates the info command stub.

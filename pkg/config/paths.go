@@ -1,33 +1,32 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
 
-// GetDefaultBinDir returns the default directory for wrappers.
-func GetDefaultBinDir() string {
-	// Use ~/.local/bin as default.
-	home, err := os.UserHomeDir()
+// GetDefaultBinDir returns the default directory for wrappers from config.
+func GetDefaultBinDir() (string, error) {
+	cfg, err := Load()
 	if err != nil {
-		return filepath.Join(".", "bin")
+		return "", fmt.Errorf("failed to load config: %w", err)
 	}
-	return filepath.Join(home, ".local", "bin")
+	return cfg.BinDir, nil
 }
 
-// GetDefaultScriptDir returns the default directory for downloaded scripts.
-func GetDefaultScriptDir() string {
-	// Use ~/.local/share/scriptman/scripts as default.
-	home, err := os.UserHomeDir()
+// GetDefaultScriptDir returns the default directory for downloaded scripts from config.
+func GetDefaultScriptDir() (string, error) {
+	cfg, err := Load()
 	if err != nil {
-		return filepath.Join(".", ".scriptman", "scripts")
+		return "", fmt.Errorf("failed to load config: %w", err)
 	}
-	return filepath.Join(home, ".local", "share", "scriptman", "scripts")
+	return cfg.ScriptDir, nil
 }
 
 // GetDefaultRegistryPath returns the default path for the registry file.
 func GetDefaultRegistryPath() string {
-	// Use ~/.config/scriptman/registry.json as default.
+	// Registry is always in ~/.config/scriptman/registry.json
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return filepath.Join(".", ".scriptman", "registry.json")
