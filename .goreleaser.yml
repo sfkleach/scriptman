@@ -1,0 +1,65 @@
+version: 2
+
+project_name: scriptman
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: scriptman
+    binary: scriptman
+    main: ./cmd/scriptman
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/sfkleach/scriptman/pkg/version.Version={{.Version}}
+      - -X github.com/sfkleach/scriptman/pkg/version.GitCommit={{.Commit}}
+      - -X github.com/sfkleach/scriptman/pkg/version.BuildDate={{.Date}}
+
+archives:
+  - id: scriptman-archive
+    name_template: "scriptman_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE*
+      - docs/**/*
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: 'New Features'
+      regexp: '^feat.*:.*'
+      order: 0
+    - title: 'Bug fixes'
+      regexp: '^fix.*:.*'
+      order: 1
+    - title: 'Other Changes'
+      order: 999
+
+release:
+  github:
+    owner: sfkleach
+    name: scriptman
+  draft: false
+  prerelease: auto
+  name_template: "{{.ProjectName}} {{.Version}}"
