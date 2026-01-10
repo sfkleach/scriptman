@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 
+	"github.com/sfkleach/scriptman/pkg/install"
 	"github.com/sfkleach/scriptman/pkg/version"
 	"github.com/spf13/cobra"
 )
@@ -31,7 +33,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&versionFlag, "version", false, "Print version information")
 
 	rootCmd.AddCommand(version.NewVersionCommand())
-	rootCmd.AddCommand(newInstallCommand())
+	rootCmd.AddCommand(install.NewInstallCommand())
 	rootCmd.AddCommand(newInfoCommand())
 	rootCmd.AddCommand(newListCommand())
 	rootCmd.AddCommand(newCheckCommand())
@@ -67,28 +69,22 @@ func runScript(name string) {
 	// Look for companion shell script.
 	shScript := filepath.Join(dir, name+".sh")
 	if _, err := os.Stat(shScript); err == nil {
-		// Execute the shell script.
-		// TODO: Use syscall.Exec for proper process replacement.
-		fmt.Fprintf(os.Stderr, "scriptman: would exec %s\n", shScript)
-		os.Exit(0)
+		// Execute the shell script using syscall.Exec.
+		// This replaces the current process with sh executing the script.
+		args := append([]string{"sh", shScript}, os.Args[1:]...)
+		env := os.Environ()
+		if err := syscall.Exec("/bin/sh", args, env); err != nil {
+			fmt.Fprintf(os.Stderr, "scriptman: failed to exec shell script: %v\n", err)
+			os.Exit(1)
+		}
+		// Never reached if exec succeeds.
+		return
 	}
 
 	// No script found.
 	fmt.Fprintf(os.Stderr, "scriptman: no dispatch found for '%s'\n", name)
 	fmt.Fprintf(os.Stderr, "scriptman: looked for %s\n", shScript)
 	os.Exit(1)
-}
-
-// newInstallCommand creates the install command stub.
-func newInstallCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "install",
-		Short: "Install a script from a GitHub repository",
-		Long:  "Install a script from a GitHub repository (TBD).",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("install command: TBD")
-		},
-	}
 }
 
 // newInfoCommand creates the info command stub.
