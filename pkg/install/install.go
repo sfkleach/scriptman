@@ -16,11 +16,12 @@ import (
 
 // Options contains the install command options.
 type Options struct {
-	Repo        string
-	Path        string
-	Interpreter string
-	Name        string
-	Into        string
+	Repo         string
+	Path         string
+	Interpreter  string
+	Name         string
+	Into         string
+	TrustShebang bool
 }
 
 // NewInstallCommand creates the install command.
@@ -48,6 +49,7 @@ Examples:
 	cmd.Flags().StringVar(&opts.Interpreter, "interpreter", "", "Explicit interpreter command")
 	cmd.Flags().StringVar(&opts.Name, "name", "", "Name for the wrapper (defaults to script filename without extension)")
 	cmd.Flags().StringVar(&opts.Into, "into", "", "Target directory for wrapper (defaults to ~/.local/bin)")
+	cmd.Flags().BoolVar(&opts.TrustShebang, "trust-shebang", false, "Trust shebang line without consistency checks or prompts")
 
 	return cmd
 }
@@ -101,7 +103,7 @@ func runInstall(opts *Options) error {
 
 	// Detect interpreter.
 	fmt.Println("Detecting interpreter...")
-	interpPath, warning, err := interpreter.Detect(opts.Path, scriptContent, opts.Interpreter)
+	interpPath, warning, err := interpreter.Detect(opts.Path, scriptContent, opts.Interpreter, opts.TrustShebang)
 	if err != nil {
 		return err
 	}

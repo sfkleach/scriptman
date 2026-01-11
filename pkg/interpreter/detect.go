@@ -54,80 +54,211 @@ type shebangInfo struct {
 	fullLine    string   // The complete shebang line for reference
 }
 
+// InterpreterChoice represents a possible interpreter choice with reasoning.
+type InterpreterChoice struct {
+	Source         string   // "explicit", "shebang", "extension", "extension-alternatives"
+	Interpreter    string   // The interpreter name or path
+	Alternatives   []string // Alternative interpreters (for extension-based)
+	UseShebang     bool     // If true, use shebang line verbatim
+	Reason         string   // Human-readable reason for this choice
+	RequiresPrompt bool     // Whether this choice requires user confirmation
+}
+
+// DecisionResult contains the interpreter choices determined for a script.
+type DecisionResult struct {
+	Choices []InterpreterChoice // Possible choices (0=error, 1=automatic, 2=needs prompt)
+	Error   error               // Error if no valid choices available
+}
+
 // Detect determines the appropriate interpreter for a script.
 // Priority:
 // 1. Explicit interpreter parameter (if provided)
-// 2. Shebang line with consistency checking and user prompting
+// 2. Shebang line with consistency checking and user prompting (unless trustShebang is true)
 // 3. File extension mapping (checks which alternative exists on PATH)
 // 4. Error if none can be determined
-func Detect(scriptPath string, scriptContent []byte, explicitInterpreter string) (string, string, error) {
-	// Priority 1: Explicit interpreter.
-	if explicitInterpreter != "" {
-		path, err := resolveInterpreter(explicitInterpreter)
+func Detect(scriptPath string, scriptContent []byte, explicitInterpreter string, trustShebang bool) (string, string, error) {
+	// Get decision result.
+	decision := DetermineInterpreterChoices(scriptPath, scriptContent, explicitInterpreter, trustShebang)
+
+	// Handle error case.
+	if decision.Error != nil {
+		return "", "", decision.Error
+	}
+
+	// Handle no choices (shouldn't happen but defensive).
+	if len(decision.Choices) == 0 {
+		return "", "", fmt.Errorf("internal error: no choices determined for %s", scriptPath)
+	}
+
+	// Single choice - automatic decision.
+	if len(decision.Choices) == 1 {
+		choice := decision.Choices[0]
+
+		// If prompt required (edge case), prompt user.
+		if choice.RequiresPrompt {
+			approved := promptSingleChoice(choice)
+			if !approved {
+				return "", "", fmt.Errorf("installation aborted by user")
+			}
+		}
+
+		return resolveChoice(choice)
+	}
+
+	// Multiple choices - need user input.
+	selectedChoice := promptMultipleChoices(decision.Choices)
+	if selectedChoice == nil {
+		return "", "", fmt.Errorf("installation aborted by user")
+	}
+
+	return resolveChoice(*selectedChoice)
+}
+
+// resolveChoice converts an InterpreterChoice into an actual interpreter path.
+func resolveChoice(choice InterpreterChoice) (string, string, error) {
+	// Handle explicit interpreter.
+	if choice.Source == "explicit" {
+		path, err := resolveInterpreter(choice.Interpreter)
 		return path, "", err
 	}
 
-	// Priority 2: Shebang line.
-	if shebang := parseShebang(scriptContent); shebang != nil {
-		return handleShebang(scriptPath, shebang)
+	// Handle shebang (use verbatim).
+	if choice.UseShebang || choice.Source == "shebang" {
+		path, err := resolveInterpreter(choice.Interpreter)
+		return path, "", err
 	}
 
-	// Priority 3: File extension.
-	ext := filepath.Ext(scriptPath)
-	if alternatives, ok := ExtensionMap[ext]; ok {
-		path, warning, err := selectBestAlternative(alternatives)
-		return path, warning, err
+	// Handle extension-based alternatives.
+	if choice.Source == "extension-alternatives" {
+		return selectBestAlternative(choice.Alternatives)
 	}
 
-	return "", "", fmt.Errorf("could not determine interpreter for %s (no --interpreter, no shebang, extension %s not recognized)", scriptPath, ext)
+	return "", "", fmt.Errorf("internal error: unknown choice source %s", choice.Source)
 }
 
-// handleShebang processes a shebang line with consistency checking.
-func handleShebang(scriptPath string, shebang *shebangInfo) (string, string, error) {
-	// Check if shebang has arguments and is not using env form.
-	if len(shebang.arguments) > 0 && !shebang.usesEnv {
-		// Prompt user for approval to use shebang with arguments.
-		approved, useShebang := promptShebangWithArguments(shebang)
-		if !approved {
-			return "", "", fmt.Errorf("installation aborted by user")
-		}
-		if useShebang {
-			// User wants to use the shebang verbatim.
-			return shebang.interpreter, "", nil
-		}
-		// User declined, fall through to extension mapping.
-	}
-
-	// Get file extension.
+// DetermineInterpreterChoices analyzes a script and returns possible interpreter choices.
+// Returns a DecisionResult with:
+//   - 0 choices + error: Cannot determine interpreter (error case)
+//   - 1 choice: Automatic decision (no prompt needed)
+//   - 2 choices: Ambiguous, requires user input
+//
+// If trustShebang is true, shebang lines are used without consistency checks or prompts.
+func DetermineInterpreterChoices(scriptPath string, scriptContent []byte, explicitInterpreter string, trustShebang bool) DecisionResult {
+	shebang := parseShebang(scriptContent)
 	ext := filepath.Ext(scriptPath)
 
-	// No extension: ask user for permission to copy shebang.
-	if ext == "" {
-		approved, useShebang := promptNoExtension(shebang)
-		if !approved {
-			return "", "", fmt.Errorf("installation aborted by user")
+	// Priority 1: Explicit interpreter always wins (automatic, single choice).
+	if explicitInterpreter != "" {
+		return DecisionResult{
+			Choices: []InterpreterChoice{{
+				Source:      "explicit",
+				Interpreter: explicitInterpreter,
+				Reason:      "Explicitly specified via --interpreter flag",
+			}},
 		}
-		if useShebang {
-			return shebang.interpreter, "", nil
-		}
-		return "", "", fmt.Errorf("no extension and user declined to use shebang")
 	}
 
-	// Check extension consistency with shebang.
+	// Priority 2: Shebang exists - complex logic (or trust it directly).
+	if shebang != nil {
+		if trustShebang {
+			// Trust shebang without any checks.
+			return DecisionResult{
+				Choices: []InterpreterChoice{{
+					Source:      "shebang",
+					Interpreter: shebang.interpreter,
+					UseShebang:  false,
+					Reason:      "Trusting shebang via --trust-shebang flag",
+				}},
+			}
+		}
+		return determineWithShebang(scriptPath, ext, shebang)
+	}
+
+	// Priority 3: Extension mapping only (no shebang).
+	if alternatives, ok := ExtensionMap[ext]; ok {
+		return DecisionResult{
+			Choices: []InterpreterChoice{{
+				Source:       "extension-alternatives",
+				Alternatives: alternatives,
+				Reason:       fmt.Sprintf("Based on file extension %s", ext),
+			}},
+		}
+	}
+
+	// Priority 4: No information available.
+	return DecisionResult{
+		Error: fmt.Errorf("could not determine interpreter for %s (no --interpreter, no shebang, extension %s not recognized)", scriptPath, ext),
+	}
+}
+
+// determineWithShebang handles the complex shebang scenarios.
+func determineWithShebang(scriptPath string, ext string, shebang *shebangInfo) DecisionResult {
+	// Case 1: Shebang has arguments and is NOT using env form.
+	// This is potentially dangerous, so offer both options.
+	if len(shebang.arguments) > 0 && !shebang.usesEnv {
+		extAlternatives, hasExt := ExtensionMap[ext]
+		if hasExt {
+			// Offer extension-based or shebang with args.
+			return DecisionResult{
+				Choices: []InterpreterChoice{
+					{
+						Source:         "extension-alternatives",
+						Alternatives:   extAlternatives,
+						Reason:         fmt.Sprintf("Use extension-based interpreter without arguments (recommended)"),
+						RequiresPrompt: true,
+					},
+					{
+						Source:         "shebang",
+						Interpreter:    shebang.interpreter,
+						UseShebang:     true,
+						Reason:         fmt.Sprintf("Use shebang verbatim: %s (may be system-specific)", shebang.fullLine),
+						RequiresPrompt: true,
+					},
+				},
+			}
+		}
+		// No extension, only shebang available (but requires prompt).
+		return DecisionResult{
+			Choices: []InterpreterChoice{{
+				Source:         "shebang",
+				Interpreter:    shebang.interpreter,
+				UseShebang:     true,
+				Reason:         fmt.Sprintf("Shebang with arguments: %s (requires confirmation)", shebang.fullLine),
+				RequiresPrompt: true,
+			}},
+		}
+	}
+
+	// Case 2: No file extension.
+	// Use shebang (automatic if env form, else requires prompt).
+	if ext == "" {
+		return DecisionResult{
+			Choices: []InterpreterChoice{{
+				Source:         "shebang",
+				Interpreter:    shebang.interpreter,
+				UseShebang:     false,
+				Reason:         fmt.Sprintf("No file extension, using shebang: %s", shebang.fullLine),
+				RequiresPrompt: !shebang.usesEnv,
+			}},
+		}
+	}
+
+	// Case 3: Extension not recognized.
+	// Use shebang (requires prompt).
 	alternatives, hasExtMapping := ExtensionMap[ext]
 	if !hasExtMapping {
-		// Extension not recognized, ask user about using shebang.
-		approved, useShebang := promptUnrecognizedExtension(scriptPath, shebang)
-		if !approved {
-			return "", "", fmt.Errorf("installation aborted by user")
+		return DecisionResult{
+			Choices: []InterpreterChoice{{
+				Source:         "shebang",
+				Interpreter:    shebang.interpreter,
+				UseShebang:     false,
+				Reason:         fmt.Sprintf("Extension %s not recognized, using shebang: %s", ext, shebang.fullLine),
+				RequiresPrompt: true,
+			}},
 		}
-		if useShebang {
-			return shebang.interpreter, "", nil
-		}
-		return "", "", fmt.Errorf("extension %s not recognized and user declined to use shebang", ext)
 	}
 
-	// Check if shebang interpreter is consistent with extension alternatives.
+	// Case 4: Check consistency between shebang and extension.
 	shebangFamily := getInterpreterFamily(shebang.interpreter)
 	consistent := false
 	for _, alt := range alternatives {
@@ -137,28 +268,38 @@ func handleShebang(scriptPath string, shebang *shebangInfo) (string, string, err
 		}
 	}
 
-	if !consistent {
-		// Inconsistent: prompt user to choose.
-		approved, useShebang := promptInconsistent(scriptPath, shebang, alternatives)
-		if !approved {
-			return "", "", fmt.Errorf("installation aborted by user")
+	if consistent {
+		// Consistent: use extension-based (automatic, single choice).
+		return DecisionResult{
+			Choices: []InterpreterChoice{{
+				Source:       "extension-alternatives",
+				Alternatives: alternatives,
+				Reason:       fmt.Sprintf("Shebang (%s) consistent with extension %s", shebang.interpreter, ext),
+			}},
 		}
-		if useShebang {
-			// Try to resolve the shebang interpreter.
-			path, err := resolveInterpreter(shebang.interpreter)
-			if err != nil {
-				return "", "", fmt.Errorf("shebang interpreter %s: %w", shebang.interpreter, err)
-			}
-			return path, "", nil
-		}
-		// Use extension mapping.
 	}
 
-	// Consistent or user chose extension: use our configured interpreter.
-	path, warning, err := selectBestAlternative(alternatives)
-	return path, warning, err
+	// Inconsistent: offer both options.
+	return DecisionResult{
+		Choices: []InterpreterChoice{
+			{
+				Source:         "extension-alternatives",
+				Alternatives:   alternatives,
+				Reason:         fmt.Sprintf("Use extension-based interpreter (recommended)"),
+				RequiresPrompt: true,
+			},
+			{
+				Source:         "shebang",
+				Interpreter:    shebang.interpreter,
+				UseShebang:     false,
+				Reason:         fmt.Sprintf("Use shebang interpreter: %s", shebang.fullLine),
+				RequiresPrompt: true,
+			},
+		},
+	}
 }
 
+// handleShebang processes a shebang line with consistency checking.
 // selectBestAlternative finds the first interpreter from alternatives that exists on PATH.
 // Returns the resolved path, an optional warning, and an error.
 func selectBestAlternative(alternatives []string) (string, string, error) {
@@ -277,8 +418,44 @@ func resolveInterpreterWithoutCheck(name string) (string, error) {
 	return filepath.Join("/usr/bin", name), nil
 }
 
-// promptShebangWithArguments prompts the user when a shebang has arguments.
-// Returns (approved, useShebang) where approved=false means abort.
+// promptSingleChoice prompts the user for a single choice that requires confirmation.
+func promptSingleChoice(choice InterpreterChoice) bool {
+	fmt.Fprintf(os.Stderr, "\n%s\n", choice.Reason)
+	fmt.Fprintf(os.Stderr, "Options:\n")
+	fmt.Fprintf(os.Stderr, "  1. Proceed\n")
+	fmt.Fprintf(os.Stderr, "  2. Abort installation\n")
+
+	selected := promptChoice("[1]", []string{"1", "2"})
+	return selected == "1"
+}
+
+// promptMultipleChoices prompts the user to select from multiple choices.
+// Returns the selected choice or nil if aborted.
+func promptMultipleChoices(choices []InterpreterChoice) *InterpreterChoice {
+	fmt.Fprintf(os.Stderr, "\nMultiple interpreter options available:\n")
+	for i, choice := range choices {
+		fmt.Fprintf(os.Stderr, "  %d. %s\n", i+1, choice.Reason)
+	}
+	fmt.Fprintf(os.Stderr, "  %d. Abort installation\n", len(choices)+1)
+
+	validChoices := make([]string, len(choices)+1)
+	for i := 0; i < len(choices); i++ {
+		validChoices[i] = fmt.Sprintf("%d", i+1)
+	}
+	validChoices[len(choices)] = fmt.Sprintf("%d", len(choices)+1)
+
+	selected := promptChoice("[1]", validChoices)
+	idx := 0
+	fmt.Sscanf(selected, "%d", &idx)
+
+	if idx < 1 || idx > len(choices) {
+		return nil // Abort
+	}
+
+	return &choices[idx-1]
+}
+
+// promptShebangWithArguments is kept for backward compatibility but simplified.
 func promptShebangWithArguments(shebang *shebangInfo) (bool, bool) {
 	fmt.Fprintf(os.Stderr, "\nScript has shebang: %s\n", shebang.fullLine)
 	fmt.Fprintf(os.Stderr, "This uses interpreter arguments: %s\n", strings.Join(shebang.arguments, " "))
@@ -300,7 +477,7 @@ func promptShebangWithArguments(shebang *shebangInfo) (bool, bool) {
 	}
 }
 
-// promptNoExtension prompts when there's a shebang but no file extension.
+// promptNoExtension is kept for backward compatibility but simplified.
 func promptNoExtension(shebang *shebangInfo) (bool, bool) {
 	fmt.Fprintf(os.Stderr, "\nScript has no file extension.\n")
 	fmt.Fprintf(os.Stderr, "Shebang line: %s\n", shebang.fullLine)
@@ -319,7 +496,7 @@ func promptNoExtension(shebang *shebangInfo) (bool, bool) {
 	}
 }
 
-// promptUnrecognizedExtension prompts when extension is not in our map.
+// promptUnrecognizedExtension is kept for backward compatibility but simplified.
 func promptUnrecognizedExtension(scriptPath string, shebang *shebangInfo) (bool, bool) {
 	ext := filepath.Ext(scriptPath)
 	fmt.Fprintf(os.Stderr, "\nFile extension %s is not recognized.\n", ext)
@@ -339,7 +516,7 @@ func promptUnrecognizedExtension(scriptPath string, shebang *shebangInfo) (bool,
 	}
 }
 
-// promptInconsistent prompts when shebang and extension suggest different interpreters.
+// promptInconsistent is kept for backward compatibility but simplified.
 func promptInconsistent(scriptPath string, shebang *shebangInfo, alternatives []string) (bool, bool) {
 	ext := filepath.Ext(scriptPath)
 	fmt.Fprintf(os.Stderr, "\nInterpreter mismatch detected:\n")
