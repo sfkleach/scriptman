@@ -161,6 +161,7 @@ func runInstall(opts *Options) error {
 		WrapperPath: wrapperPath,
 		InstalledAt: time.Now(),
 		Version:     result.Tag,
+		Commit:      result.Commit,
 	})
 
 	// Save registry.

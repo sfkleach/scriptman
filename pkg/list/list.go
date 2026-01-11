@@ -87,12 +87,6 @@ func runList(args []string, opts *Options) error {
 	sort.Strings(names)
 
 	// Print scripts.
-	if filterName != "" {
-		fmt.Printf("Scripts matching '%s' (%d):\n", filterName, len(filtered))
-	} else {
-		fmt.Printf("Installed scripts (%d):\n", len(filtered))
-	}
-
 	if opts.Long {
 		outputLong(names, filtered)
 	} else {
@@ -102,15 +96,10 @@ func runList(args []string, opts *Options) error {
 	return nil
 }
 
-// outputShort prints a short summary of scripts.
+// outputShort prints just the executable names, one per line.
 func outputShort(names []string, scripts map[string]*registry.Script) {
 	for _, name := range names {
-		script := scripts[name]
-		version := ""
-		if script.Version != "" {
-			version = fmt.Sprintf(" [%s]", script.Version)
-		}
-		fmt.Printf("  %-20s %s/%s%s\n", name, script.Repo, script.SourcePath, version)
+		fmt.Println(name)
 	}
 }
 
@@ -128,6 +117,9 @@ func outputLong(names []string, scripts map[string]*registry.Script) {
 			fmt.Printf("Version:      %s\n", script.Version)
 		} else {
 			fmt.Printf("Version:      (main branch)\n")
+		}
+		if script.Commit != "" {
+			fmt.Printf("Commit:       %s\n", script.Commit[:min(7, len(script.Commit))])
 		}
 		fmt.Printf("Interpreter:  %s\n", script.Interpreter)
 		fmt.Printf("Local Script: %s\n", script.LocalScript)

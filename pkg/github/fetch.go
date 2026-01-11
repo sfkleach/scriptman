@@ -19,6 +19,37 @@ type Release struct {
 type FetchResult struct {
 	Content []byte
 	Tag     string // Release tag, empty if fetched from main branch
+	Commit  string // Commit SHA at time of fetch
+}
+
+// CommitInfo represents a GitHub commit.
+type CommitInfo struct {
+	SHA string `json:"sha"`
+}
+
+// GetCommit fetches the commit SHA for a given ref (tag or branch).
+func GetCommit(repo, ref string) (string, error) {
+	repo = normalizeRepo(repo)
+
+	url := fmt.Sprintf("https://api.github.com/repos/%s/commits/%s", repo, ref)
+
+	// #nosec G107 -- Fetching from GitHub API is the core feature of this tool.
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to query commit: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to query commit: HTTP %d", resp.StatusCode)
+	}
+
+	var commit CommitInfo
+	if err := json.NewDecoder(resp.Body).Decode(&commit); err != nil {
+		return "", fmt.Errorf("failed to parse commit response: %w", err)
+	}
+
+	return commit.SHA, nil
 }
 
 // GetLatestRelease fetches the latest release tag for a repository.
@@ -82,9 +113,17 @@ func FetchScript(repo, path, tag string) (*FetchResult, error) {
 		return nil, fmt.Errorf("failed to read script content: %w", err)
 	}
 
+	// Get commit SHA for this ref.
+	commit, err := GetCommit(repo, ref)
+	if err != nil {
+		// Non-fatal: we can still use the script without commit tracking.
+		commit = ""
+	}
+
 	return &FetchResult{
 		Content: data,
 		Tag:     tag,
+		Commit:  commit,
 	}, nil
 }
 

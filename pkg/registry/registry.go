@@ -26,6 +26,7 @@ type Script struct {
 	WrapperPath string    `json:"wrapper_path"`
 	InstalledAt time.Time `json:"installed_at"`
 	Version     string    `json:"version,omitempty"`
+	Commit      string    `json:"commit,omitempty"`
 }
 
 // Load reads the registry from disk. Returns an empty registry if file doesn't exist.
