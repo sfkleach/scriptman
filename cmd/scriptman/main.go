@@ -32,7 +32,6 @@ func init() {
 
 	rootCmd.AddCommand(version.NewVersionCommand())
 	rootCmd.AddCommand(install.NewInstallCommand())
-	rootCmd.AddCommand(newInfoCommand())
 	rootCmd.AddCommand(newListCommand())
 	rootCmd.AddCommand(newCheckCommand())
 	rootCmd.AddCommand(newUpdateCommand())
@@ -43,18 +42,6 @@ func main() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
-	}
-}
-
-// newInfoCommand creates the info command stub.
-func newInfoCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "info",
-		Short: "Show information about an installed script",
-		Long:  "Show information about an installed script (TBD).",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("info command: TBD")
-		},
 	}
 }
 

@@ -12,7 +12,6 @@ for command line parsing. The subcommands are:
 
 - version
 - install
-- info
 - list
 - check
 - update
