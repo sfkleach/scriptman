@@ -2,6 +2,7 @@ package install
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -101,6 +102,12 @@ func runInstall(opts *Options) error {
 		return fmt.Errorf("failed to fetch script: %w", err)
 	}
 
+	// Load config to get script permissions.
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
 	// Detect interpreter.
 	fmt.Println("Detecting interpreter...")
 	interpPath, warning, err := interpreter.Detect(opts.Path, scriptContent, opts.Interpreter, opts.TrustShebang)
@@ -121,7 +128,7 @@ func runInstall(opts *Options) error {
 
 	// Save script.
 	fmt.Printf("Saving script to %s...\n", localScriptPath)
-	if err := github.SaveScript(scriptContent, localScriptPath); err != nil {
+	if err := github.SaveScript(scriptContent, localScriptPath, os.FileMode(cfg.ScriptPermissions)); err != nil {
 		return fmt.Errorf("failed to save script: %w", err)
 	}
 

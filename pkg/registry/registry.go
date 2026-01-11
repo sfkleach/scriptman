@@ -30,6 +30,7 @@ type Script struct {
 
 // Load reads the registry from disk. Returns an empty registry if file doesn't exist.
 func Load(path string) (*Registry, error) {
+	// #nosec G304 -- Reading user's registry file from managed location is intentional.
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return &Registry{
@@ -57,6 +58,7 @@ func Load(path string) (*Registry, error) {
 // Save writes the registry to disk.
 func (r *Registry) Save(path string) error {
 	// Ensure parent directory exists.
+	// #nosec G301 -- Standard directory permissions (0755) for user registry directory.
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("failed to create registry directory: %w", err)
 	}
@@ -67,6 +69,7 @@ func (r *Registry) Save(path string) error {
 	}
 
 	// Write with proper permissions.
+	// #nosec G306 -- Registry file uses standard permissions (0644); contains no secrets.
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("failed to write registry: %w", err)
 	}

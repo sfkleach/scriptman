@@ -9,8 +9,9 @@ import (
 
 // Config represents the scriptman configuration.
 type Config struct {
-	BinDir    string `json:"bin_dir"`
-	ScriptDir string `json:"script_dir"`
+	BinDir            string `json:"bin_dir"`
+	ScriptDir         string `json:"script_dir"`
+	ScriptPermissions uint32 `json:"script_permissions,omitempty"` // File mode for saved scripts (default: 0600)
 }
 
 // Load reads the configuration from disk. Returns default config if file doesn't exist.
@@ -20,6 +21,7 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	// #nosec G304 -- Reading user's config file from home directory is intentional CLI behavior.
 	data, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
 		// Return default configuration.
@@ -49,6 +51,14 @@ func Load() (*Config, error) {
 		}
 		cfg.ScriptDir = scriptDir
 	}
+	if cfg.ScriptPermissions == 0 {
+		cfg.ScriptPermissions = 0600
+	}
+
+	// Validate script permissions: must not allow group or other write.
+	if cfg.ScriptPermissions&0022 != 0 {
+		return nil, fmt.Errorf("invalid script_permissions 0%o: group and other write bits must not be set (mask 0022)", cfg.ScriptPermissions)
+	}
 
 	return &cfg, nil
 }
@@ -61,6 +71,7 @@ func (c *Config) Save() error {
 	}
 
 	// Ensure parent directory exists.
+	// #nosec G301 -- Standard directory permissions (0755) for user config directory.
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
@@ -71,6 +82,7 @@ func (c *Config) Save() error {
 	}
 
 	// Write with proper permissions.
+	// #nosec G306 -- Config file uses standard permissions (0644); contains no secrets.
 	if err := os.WriteFile(configPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
@@ -89,8 +101,9 @@ func GetDefaultConfig() (*Config, error) {
 		return nil, err
 	}
 	return &Config{
-		BinDir:    binDir,
-		ScriptDir: scriptDir,
+		BinDir:            binDir,
+		ScriptDir:         scriptDir,
+		ScriptPermissions: 0600,
 	}, nil
 }
 

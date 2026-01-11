@@ -12,11 +12,13 @@ func CreateWrapper(interpreterPath, scriptPath, wrapperPath string) error {
 	shellScript := fmt.Sprintf("#!/bin/sh\nexec %s %s \"$@\"\n", interpreterPath, scriptPath)
 
 	// Ensure parent directory exists.
+	// #nosec G301 -- Standard directory permissions (0755) required for wrapper executables.
 	if err := os.MkdirAll(filepath.Dir(wrapperPath), 0755); err != nil {
 		return fmt.Errorf("failed to create wrapper directory: %w", err)
 	}
 
 	// Write shell script wrapper.
+	// #nosec G306 -- Wrapper must be executable (0755) to function as a command.
 	if err := os.WriteFile(wrapperPath, []byte(shellScript), 0755); err != nil {
 		return fmt.Errorf("failed to write wrapper: %w", err)
 	}
