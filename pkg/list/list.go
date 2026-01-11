@@ -106,7 +106,11 @@ func runList(args []string, opts *Options) error {
 func outputShort(names []string, scripts map[string]*registry.Script) {
 	for _, name := range names {
 		script := scripts[name]
-		fmt.Printf("  %-20s %s/%s\n", name, script.Repo, script.SourcePath)
+		version := ""
+		if script.Version != "" {
+			version = fmt.Sprintf(" [%s]", script.Version)
+		}
+		fmt.Printf("  %-20s %s/%s%s\n", name, script.Repo, script.SourcePath, version)
 	}
 }
 
@@ -120,13 +124,15 @@ func outputLong(names []string, scripts map[string]*registry.Script) {
 		fmt.Printf("Name:         %s\n", name)
 		fmt.Printf("Repository:   %s\n", script.Repo)
 		fmt.Printf("Source Path:  %s\n", script.SourcePath)
+		if script.Version != "" {
+			fmt.Printf("Version:      %s\n", script.Version)
+		} else {
+			fmt.Printf("Version:      (main branch)\n")
+		}
 		fmt.Printf("Interpreter:  %s\n", script.Interpreter)
 		fmt.Printf("Local Script: %s\n", script.LocalScript)
 		fmt.Printf("Wrapper Path: %s\n", script.WrapperPath)
 		fmt.Printf("Installed At: %s\n", script.InstalledAt.Format("2006-01-02 15:04:05"))
-		if script.Version != "" {
-			fmt.Printf("Version:      %s\n", script.Version)
-		}
 	}
 }
 

@@ -95,9 +95,22 @@ func runInstall(opts *Options) error {
 		return fmt.Errorf("script '%s' is already installed\nUse 'scriptman remove %s' first or choose a different name with --name", name, name)
 	}
 
+	// Get latest release tag (may be empty if no releases).
+	fmt.Printf("Checking for releases of %s...\n", opts.Repo)
+	tag, err := github.GetLatestRelease(opts.Repo)
+	if err != nil {
+		return fmt.Errorf("failed to check releases: %w", err)
+	}
+
+	if tag != "" {
+		fmt.Printf("Found release: %s\n", tag)
+	} else {
+		fmt.Println("No releases found, using main branch")
+	}
+
 	// Fetch script from GitHub.
 	fmt.Printf("Fetching %s from %s...\n", opts.Path, opts.Repo)
-	scriptContent, err := github.FetchScript(opts.Repo, opts.Path)
+	result, err := github.FetchScript(opts.Repo, opts.Path, tag)
 	if err != nil {
 		return fmt.Errorf("failed to fetch script: %w", err)
 	}
@@ -110,7 +123,7 @@ func runInstall(opts *Options) error {
 
 	// Detect interpreter.
 	fmt.Println("Detecting interpreter...")
-	interpPath, warning, err := interpreter.Detect(opts.Path, scriptContent, opts.Interpreter, opts.TrustShebang)
+	interpPath, warning, err := interpreter.Detect(opts.Path, result.Content, opts.Interpreter, opts.TrustShebang)
 	if err != nil {
 		return err
 	}
@@ -128,7 +141,7 @@ func runInstall(opts *Options) error {
 
 	// Save script.
 	fmt.Printf("Saving script to %s...\n", localScriptPath)
-	if err := github.SaveScript(scriptContent, localScriptPath, os.FileMode(cfg.ScriptPermissions)); err != nil {
+	if err := github.SaveScript(result.Content, localScriptPath, os.FileMode(cfg.ScriptPermissions)); err != nil {
 		return fmt.Errorf("failed to save script: %w", err)
 	}
 
@@ -147,6 +160,7 @@ func runInstall(opts *Options) error {
 		Interpreter: interpPath,
 		WrapperPath: wrapperPath,
 		InstalledAt: time.Now(),
+		Version:     result.Tag,
 	})
 
 	// Save registry.
@@ -157,6 +171,8 @@ func runInstall(opts *Options) error {
 	fmt.Printf("\n✓ Installed '%s' successfully\n", name)
 	fmt.Printf("  Wrapper: %s\n", wrapperPath)
 	fmt.Printf("  Script:  %s\n", localScriptPath)
-
+	if result.Tag != "" {
+		fmt.Printf("  Version: %s\n", result.Tag)
+	}
 	return nil
 }
