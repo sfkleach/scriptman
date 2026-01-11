@@ -7,9 +7,16 @@ import (
 	"github.com/sfkleach/scriptman/pkg/interpreter"
 )
 
+// DetermineInterpreterChoices is a test helper that wraps the DecisionInput method.
+// This function is only used in tests to avoid exposing the standalone function in the public API.
+func DetermineInterpreterChoices(scriptPath string, scriptContent []byte, explicitInterpreter string, trustShebang bool) interpreter.DecisionResult {
+	input := interpreter.NewDecisionInput(scriptPath, scriptContent, explicitInterpreter, trustShebang)
+	return input.DetermineInterpreterChoices()
+}
+
 func TestDetermineInterpreterChoices_ExplicitInterpreter(t *testing.T) {
 	content := []byte("#!/usr/bin/env python\nprint('hello')")
-	result := interpreter.DetermineInterpreterChoices("script.py", content, "ruby", false)
+	result := DetermineInterpreterChoices("script.py", content, "ruby", false)
 
 	if result.Error != nil {
 		t.Fatalf("unexpected error: %v", result.Error)
@@ -33,7 +40,7 @@ func TestDetermineInterpreterChoices_ExplicitInterpreter(t *testing.T) {
 
 func TestDetermineInterpreterChoices_ConsistentShebangAndExtension(t *testing.T) {
 	content := []byte("#!/usr/bin/env python\nprint('hello')")
-	result := interpreter.DetermineInterpreterChoices("script.py", content, "", false)
+	result := DetermineInterpreterChoices("script.py", content, "", false)
 
 	if result.Error != nil {
 		t.Fatalf("unexpected error: %v", result.Error)
@@ -54,7 +61,7 @@ func TestDetermineInterpreterChoices_ConsistentShebangAndExtension(t *testing.T)
 
 func TestDetermineInterpreterChoices_InconsistentShebangAndExtension(t *testing.T) {
 	content := []byte("#!/usr/bin/env ruby\nputs 'hello'")
-	result := interpreter.DetermineInterpreterChoices("script.py", content, "", false)
+	result := DetermineInterpreterChoices("script.py", content, "", false)
 
 	if result.Error != nil {
 		t.Fatalf("unexpected error: %v", result.Error)
@@ -84,7 +91,7 @@ func TestDetermineInterpreterChoices_InconsistentShebangAndExtension(t *testing.
 
 func TestDetermineInterpreterChoices_ShebangWithArguments(t *testing.T) {
 	content := []byte("#!/usr/bin/python -u\nprint('hello')")
-	result := interpreter.DetermineInterpreterChoices("script.py", content, "", false)
+	result := DetermineInterpreterChoices("script.py", content, "", false)
 
 	if result.Error != nil {
 		t.Fatalf("unexpected error: %v", result.Error)
@@ -104,7 +111,7 @@ func TestDetermineInterpreterChoices_ShebangWithArguments(t *testing.T) {
 
 func TestDetermineInterpreterChoices_NoExtension(t *testing.T) {
 	content := []byte("#!/usr/bin/env python3\nprint('hello')")
-	result := interpreter.DetermineInterpreterChoices("script", content, "", false)
+	result := DetermineInterpreterChoices("script", content, "", false)
 
 	if result.Error != nil {
 		t.Fatalf("unexpected error: %v", result.Error)
@@ -127,7 +134,7 @@ func TestDetermineInterpreterChoices_NoExtension(t *testing.T) {
 
 func TestDetermineInterpreterChoices_NoShebangWithExtension(t *testing.T) {
 	content := []byte("print('hello')")
-	result := interpreter.DetermineInterpreterChoices("script.py", content, "", false)
+	result := DetermineInterpreterChoices("script.py", content, "", false)
 
 	if result.Error != nil {
 		t.Fatalf("unexpected error: %v", result.Error)
@@ -148,7 +155,7 @@ func TestDetermineInterpreterChoices_NoShebangWithExtension(t *testing.T) {
 
 func TestDetermineInterpreterChoices_NoShebangNoExtension(t *testing.T) {
 	content := []byte("print('hello')")
-	result := interpreter.DetermineInterpreterChoices("script", content, "", false)
+	result := DetermineInterpreterChoices("script", content, "", false)
 
 	if result.Error == nil {
 		t.Fatal("expected error for no shebang and no extension")
@@ -161,7 +168,7 @@ func TestDetermineInterpreterChoices_NoShebangNoExtension(t *testing.T) {
 
 func TestDetermineInterpreterChoices_UnrecognizedExtension(t *testing.T) {
 	content := []byte("#!/usr/bin/env foo\nsome code")
-	result := interpreter.DetermineInterpreterChoices("script.xyz", content, "", false)
+	result := DetermineInterpreterChoices("script.xyz", content, "", false)
 
 	if result.Error != nil {
 		t.Fatalf("unexpected error: %v", result.Error)
@@ -185,7 +192,7 @@ func TestDetermineInterpreterChoices_TrustShebang(t *testing.T) {
 
 	// Case 1: Inconsistent shebang + extension (normally prompts, but trusts shebang).
 	content := []byte("#!/usr/bin/env ruby\nputs 'hello'")
-	result := interpreter.DetermineInterpreterChoices("script.py", content, "", true)
+	result := DetermineInterpreterChoices("script.py", content, "", true)
 
 	if result.Error != nil {
 		t.Fatalf("unexpected error: %v", result.Error)
@@ -213,7 +220,7 @@ func TestDetermineInterpreterChoices_TrustShebang(t *testing.T) {
 func TestDetermineInterpreterChoices_TrustShebangWithArguments(t *testing.T) {
 	// Even with arguments, --trust-shebang should bypass prompts.
 	content := []byte("#!/usr/bin/python -u -W ignore\nprint('hello')")
-	result := interpreter.DetermineInterpreterChoices("script.py", content, "", true)
+	result := DetermineInterpreterChoices("script.py", content, "", true)
 
 	if result.Error != nil {
 		t.Fatalf("unexpected error: %v", result.Error)

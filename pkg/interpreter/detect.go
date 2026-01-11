@@ -70,6 +70,24 @@ type DecisionResult struct {
 	Error   error               // Error if no valid choices available
 }
 
+// DecisionInput encapsulates all input parameters for interpreter detection.
+type DecisionInput struct {
+	scriptPath          string
+	scriptContent       []byte
+	explicitInterpreter string
+	trustShebang        bool
+}
+
+// NewDecisionInput creates a new DecisionInput.
+func NewDecisionInput(scriptPath string, scriptContent []byte, explicitInterpreter string, trustShebang bool) *DecisionInput {
+	return &DecisionInput{
+		scriptPath:          scriptPath,
+		scriptContent:       scriptContent,
+		explicitInterpreter: explicitInterpreter,
+		trustShebang:        trustShebang,
+	}
+}
+
 // Detect determines the appropriate interpreter for a script.
 // Priority:
 // 1. Explicit interpreter parameter (if provided)
@@ -77,8 +95,14 @@ type DecisionResult struct {
 // 3. File extension mapping (checks which alternative exists on PATH)
 // 4. Error if none can be determined
 func Detect(scriptPath string, scriptContent []byte, explicitInterpreter string, trustShebang bool) (string, string, error) {
+	input := NewDecisionInput(scriptPath, scriptContent, explicitInterpreter, trustShebang)
+	return input.Detect()
+}
+
+// Detect determines the appropriate interpreter for a script based on the DecisionInput.
+func (d *DecisionInput) Detect() (string, string, error) {
 	// Get decision result.
-	decision := DetermineInterpreterChoices(scriptPath, scriptContent, explicitInterpreter, trustShebang)
+	decision := d.DetermineInterpreterChoices()
 
 	// Handle error case.
 	if decision.Error != nil {
@@ -87,7 +111,7 @@ func Detect(scriptPath string, scriptContent []byte, explicitInterpreter string,
 
 	// Handle no choices (shouldn't happen but defensive).
 	if len(decision.Choices) == 0 {
-		return "", "", fmt.Errorf("internal error: no choices determined for %s", scriptPath)
+		return "", "", fmt.Errorf("internal error: no choices determined for %s", d.scriptPath)
 	}
 
 	// Single choice - automatic decision.
@@ -136,23 +160,17 @@ func resolveChoice(choice InterpreterChoice) (string, string, error) {
 	return "", "", fmt.Errorf("internal error: unknown choice source %s", choice.Source)
 }
 
-// DetermineInterpreterChoices analyzes a script and returns possible interpreter choices.
-// Returns a DecisionResult with:
-//   - 0 choices + error: Cannot determine interpreter (error case)
-//   - 1 choice: Automatic decision (no prompt needed)
-//   - 2 choices: Ambiguous, requires user input
-//
-// If trustShebang is true, shebang lines are used without consistency checks or prompts.
-func DetermineInterpreterChoices(scriptPath string, scriptContent []byte, explicitInterpreter string, trustShebang bool) DecisionResult {
-	shebang := parseShebang(scriptContent)
-	ext := filepath.Ext(scriptPath)
+// DetermineInterpreterChoices analyzes the script based on DecisionInput and returns possible interpreter choices.
+func (d *DecisionInput) DetermineInterpreterChoices() DecisionResult {
+	shebang := parseShebang(d.scriptContent)
+	ext := filepath.Ext(d.scriptPath)
 
 	// Priority 1: Explicit interpreter always wins (automatic, single choice).
-	if explicitInterpreter != "" {
+	if d.explicitInterpreter != "" {
 		return DecisionResult{
 			Choices: []InterpreterChoice{{
 				Source:      "explicit",
-				Interpreter: explicitInterpreter,
+				Interpreter: d.explicitInterpreter,
 				Reason:      "Explicitly specified via --interpreter flag",
 			}},
 		}
@@ -160,7 +178,7 @@ func DetermineInterpreterChoices(scriptPath string, scriptContent []byte, explic
 
 	// Priority 2: Shebang exists - complex logic (or trust it directly).
 	if shebang != nil {
-		if trustShebang {
+		if d.trustShebang {
 			// Trust shebang without any checks.
 			return DecisionResult{
 				Choices: []InterpreterChoice{{
@@ -171,7 +189,7 @@ func DetermineInterpreterChoices(scriptPath string, scriptContent []byte, explic
 				}},
 			}
 		}
-		return determineWithShebang(scriptPath, ext, shebang)
+		return d.determineWithShebang(ext, shebang)
 	}
 
 	// Priority 3: Extension mapping only (no shebang).
@@ -187,12 +205,12 @@ func DetermineInterpreterChoices(scriptPath string, scriptContent []byte, explic
 
 	// Priority 4: No information available.
 	return DecisionResult{
-		Error: fmt.Errorf("could not determine interpreter for %s (no --interpreter, no shebang, extension %s not recognized)", scriptPath, ext),
+		Error: fmt.Errorf("could not determine interpreter for %s (no --interpreter, no shebang, extension %s not recognized)", d.scriptPath, ext),
 	}
 }
 
 // determineWithShebang handles the complex shebang scenarios.
-func determineWithShebang(scriptPath string, ext string, shebang *shebangInfo) DecisionResult {
+func (d *DecisionInput) determineWithShebang(ext string, shebang *shebangInfo) DecisionResult {
 	// Case 1: Shebang has arguments and is NOT using env form.
 	// This is potentially dangerous, so offer both options.
 	if len(shebang.arguments) > 0 && !shebang.usesEnv {
@@ -453,91 +471,6 @@ func promptMultipleChoices(choices []InterpreterChoice) *InterpreterChoice {
 	}
 
 	return &choices[idx-1]
-}
-
-// promptShebangWithArguments is kept for backward compatibility but simplified.
-func promptShebangWithArguments(shebang *shebangInfo) (bool, bool) {
-	fmt.Fprintf(os.Stderr, "\nScript has shebang: %s\n", shebang.fullLine)
-	fmt.Fprintf(os.Stderr, "This uses interpreter arguments: %s\n", strings.Join(shebang.arguments, " "))
-	fmt.Fprintf(os.Stderr, "Options:\n")
-	fmt.Fprintf(os.Stderr, "  1. Use our configured interpreter without arguments (recommended)\n")
-	fmt.Fprintf(os.Stderr, "  2. Copy shebang verbatim (may be system-specific)\n")
-	fmt.Fprintf(os.Stderr, "  3. Abort installation\n")
-
-	choice := promptChoice("[1]", []string{"1", "2", "3"})
-	switch choice {
-	case "1":
-		return true, false // Use our interpreter
-	case "2":
-		return true, true // Use shebang
-	case "3":
-		return false, false // Abort
-	default:
-		return true, false // Default to option 1
-	}
-}
-
-// promptNoExtension is kept for backward compatibility but simplified.
-func promptNoExtension(shebang *shebangInfo) (bool, bool) {
-	fmt.Fprintf(os.Stderr, "\nScript has no file extension.\n")
-	fmt.Fprintf(os.Stderr, "Shebang line: %s\n", shebang.fullLine)
-	fmt.Fprintf(os.Stderr, "Options:\n")
-	fmt.Fprintf(os.Stderr, "  1. Use shebang interpreter (recommended)\n")
-	fmt.Fprintf(os.Stderr, "  2. Abort installation\n")
-
-	choice := promptChoice("[1]", []string{"1", "2"})
-	switch choice {
-	case "1":
-		return true, true // Use shebang
-	case "2":
-		return false, false // Abort
-	default:
-		return true, true // Default to option 1
-	}
-}
-
-// promptUnrecognizedExtension is kept for backward compatibility but simplified.
-func promptUnrecognizedExtension(scriptPath string, shebang *shebangInfo) (bool, bool) {
-	ext := filepath.Ext(scriptPath)
-	fmt.Fprintf(os.Stderr, "\nFile extension %s is not recognized.\n", ext)
-	fmt.Fprintf(os.Stderr, "Shebang line: %s\n", shebang.fullLine)
-	fmt.Fprintf(os.Stderr, "Options:\n")
-	fmt.Fprintf(os.Stderr, "  1. Use shebang interpreter (recommended)\n")
-	fmt.Fprintf(os.Stderr, "  2. Abort installation\n")
-
-	choice := promptChoice("[1]", []string{"1", "2"})
-	switch choice {
-	case "1":
-		return true, true // Use shebang
-	case "2":
-		return false, false // Abort
-	default:
-		return true, true // Default to option 1
-	}
-}
-
-// promptInconsistent is kept for backward compatibility but simplified.
-func promptInconsistent(scriptPath string, shebang *shebangInfo, alternatives []string) (bool, bool) {
-	ext := filepath.Ext(scriptPath)
-	fmt.Fprintf(os.Stderr, "\nInterpreter mismatch detected:\n")
-	fmt.Fprintf(os.Stderr, "  Shebang: %s\n", shebang.fullLine)
-	fmt.Fprintf(os.Stderr, "  Extension %s suggests: %s\n", ext, strings.Join(alternatives, " or "))
-	fmt.Fprintf(os.Stderr, "Options:\n")
-	fmt.Fprintf(os.Stderr, "  1. Use extension-based interpreter (recommended)\n")
-	fmt.Fprintf(os.Stderr, "  2. Use shebang interpreter\n")
-	fmt.Fprintf(os.Stderr, "  3. Abort installation\n")
-
-	choice := promptChoice("[1]", []string{"1", "2", "3"})
-	switch choice {
-	case "1":
-		return true, false // Use extension
-	case "2":
-		return true, true // Use shebang
-	case "3":
-		return false, false // Abort
-	default:
-		return true, false // Default to option 1
-	}
 }
 
 // promptChoice displays a prompt and reads user input.
