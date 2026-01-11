@@ -222,7 +222,7 @@ func (d *DecisionInput) determineWithShebang(ext string, shebang *shebangInfo) D
 					{
 						Source:         "extension-alternatives",
 						Alternatives:   extAlternatives,
-						Reason:         fmt.Sprintf("Use extension-based interpreter without arguments (recommended)"),
+						Reason:         "Use extension-based interpreter without arguments (recommended)",
 						RequiresPrompt: true,
 					},
 					{
@@ -303,7 +303,7 @@ func (d *DecisionInput) determineWithShebang(ext string, shebang *shebangInfo) D
 			{
 				Source:         "extension-alternatives",
 				Alternatives:   alternatives,
-				Reason:         fmt.Sprintf("Use extension-based interpreter (recommended)"),
+				Reason:         "Use extension-based interpreter (recommended)",
 				RequiresPrompt: true,
 			},
 			{
@@ -464,7 +464,7 @@ func promptMultipleChoices(choices []InterpreterChoice) *InterpreterChoice {
 
 	selected := promptChoice("[1]", validChoices)
 	idx := 0
-	fmt.Sscanf(selected, "%d", &idx)
+	_, _ = fmt.Sscanf(selected, "%d", &idx) // Ignore error, idx stays 0 if parse fails
 
 	if idx < 1 || idx > len(choices) {
 		return nil // Abort
@@ -479,7 +479,7 @@ func promptChoice(defaultPrompt string, validChoices []string) string {
 	fmt.Fprintf(os.Stderr, "Choice %s: ", defaultPrompt)
 
 	var input string
-	fmt.Fscanln(os.Stdin, &input)
+	_, _ = fmt.Fscanln(os.Stdin, &input) // Ignore error, input stays empty if read fails
 	input = strings.TrimSpace(input)
 
 	// If empty input, extract default from prompt like "[1]".
