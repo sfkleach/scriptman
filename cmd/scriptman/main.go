@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/sfkleach/scriptman/pkg/install"
+	"github.com/sfkleach/scriptman/pkg/list"
 	"github.com/sfkleach/scriptman/pkg/version"
 	"github.com/spf13/cobra"
 )
@@ -32,7 +33,7 @@ func init() {
 
 	rootCmd.AddCommand(version.NewVersionCommand())
 	rootCmd.AddCommand(install.NewInstallCommand())
-	rootCmd.AddCommand(newListCommand())
+	rootCmd.AddCommand(list.NewListCommand())
 	rootCmd.AddCommand(newCheckCommand())
 	rootCmd.AddCommand(newUpdateCommand())
 	rootCmd.AddCommand(newRemoveCommand())
@@ -42,18 +43,6 @@ func main() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
-	}
-}
-
-// newListCommand creates the list command stub.
-func newListCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "list",
-		Short: "List installed scripts",
-		Long:  "List all installed scripts (TBD).",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("list command: TBD")
-		},
 	}
 }
 
