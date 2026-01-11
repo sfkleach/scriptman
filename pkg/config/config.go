@@ -14,6 +14,16 @@ type Config struct {
 	ScriptPermissions uint32 `json:"script_permissions,omitempty"` // File mode for saved scripts (default: 0600)
 }
 
+// Validate checks that the configuration is valid.
+// Returns an error if any configuration values are invalid.
+func (c *Config) Validate() error {
+	// Validate script permissions: must not allow group or other write (mask 0022).
+	if c.ScriptPermissions&0022 != 0 {
+		return fmt.Errorf("invalid script_permissions 0%o: group and other write bits must not be set (mask 0022)", c.ScriptPermissions)
+	}
+	return nil
+}
+
 // Load reads the configuration from disk. Returns default config if file doesn't exist.
 func Load() (*Config, error) {
 	configPath, err := GetConfigPath()
@@ -55,9 +65,9 @@ func Load() (*Config, error) {
 		cfg.ScriptPermissions = 0600
 	}
 
-	// Validate script permissions: must not allow group or other write.
-	if cfg.ScriptPermissions&0022 != 0 {
-		return nil, fmt.Errorf("invalid script_permissions 0%o: group and other write bits must not be set (mask 0022)", cfg.ScriptPermissions)
+	// Validate the configuration.
+	if err := cfg.Validate(); err != nil {
+		return nil, err
 	}
 
 	return &cfg, nil
